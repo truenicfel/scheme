@@ -29,15 +29,15 @@
         ; return is the index of the first element
         result
         )
-      ; else error (dummy)
-      (display "error\n")
+      ; error
+      (error "Either memory is full or allocated size is 0 or less!")
       )
   )
 
 ; access specific element in memory (bounds checked!)
 ; ----------------------------------------
 (define (ref pointer offset)
-  (if (and (> pointer 0) (< pointer MEM_SIZE))
+  (if (and (>= pointer 0) (< pointer MEM_SIZE))
       (let
           ; get size from memory
           ((size (vector-ref memory (- pointer 1))))
@@ -46,12 +46,12 @@
          (and (>= offset 0) (< offset size))
          ; this is the desired case: return the requested memory field
          (vector-ref memory (+ pointer offset))
-         ; else error (dummy)
-         (display "error\n")
+         ; else error
+         (error "The specified offset is to big or to small!")
         )
         )
-      ; else error (dummy)
-      (display "error\n")
+      ; else error
+      (error "The specified pointer (address) does not exist in memory!")
       )
   )
 
@@ -67,12 +67,12 @@
          (and (>= offset 0) (< offset size))
          ; this is the desired case: return the requested memory field
          (vector-set! memory (+ pointer offset) value)
-         ; else error (dummy)
-         (display "error\n")
+         ; else error
+         (error "The specified offset is to big or to small!")
         )
         )
-      ; else error (dummy)
-      (display "error\n")
+      ; else error
+      (error "The specified pointer (address) does not exist in memory!")
       )
   )
 
@@ -85,7 +85,7 @@
 ; create new number object with initial value
 ; returns pointer to newly allocated object
 ; ----------------------------------------
-(define (new-number value)
+(define (i-number value)
   ; malloc 2 fields and store pointer
   (let((pointer (malloc 2)))
     (ref! pointer 0 'number)
@@ -102,15 +102,15 @@
   (if (eqv? (tag pointer) 'number)
       ; its a number! -> return the first value behind tag
       (ref pointer 1)
-      ; its not a number :( -> error (dummy)
-      (display "error\n")
+      ; its not a number :( -> error
+      (error "The specified pointer does not contain a number!")
       )
   )
 
 ; create new symbol object with initial value
 ; returns pointer to newly allocated object
 ; ----------------------------------------
-(define (new-symbol value)
+(define (i-symbol value)
   ; malloc 2 fields and store pointer
   (let((pointer (malloc 2)))
     (ref! pointer 0 'symbol)
@@ -127,9 +127,89 @@
   (if (eqv? (tag pointer) 'symbol)
       ; its a number! -> return the first value behind tag
       (ref pointer 1)
-      ; its not a number :( -> error (dummy)
-      (display "error\n")
+      ; its not a symbol :( -> error
+      (error "The specified pointer does not contain a symbol!")
       )
+  )
+
+; readable memory dump
+; ----------------------------------------
+(define (printMemory)
+  (display "Memory Contents:")
+  (newline)
+  (display "----------------------------------------")
+  (newline)
+  (printRecord 0)
+  )
+
+
+(define (printRecord pointer)
+  (if (and (<= pointer MEM_SIZE) (> (vector-ref memory pointer) 0))
+      (let ((length (vector-ref memory pointer))) 
+        (display "address: ")
+        (display pointer)
+        (newline)
+        (display "   length: ")
+        (display length)
+        (newline)
+        (display "   data: ")
+        (do ((i 1 (+ i 1)))
+          ((> i length))
+          (display (vector-ref memory (+ pointer i)))
+          (display ", ")
+          )
+        (newline)
+        (printRecord (+ pointer length 1))   
+        )
+      )
+  )
+
+; construct a new pair
+; a pair looks as follows
+; ----------------------------------------
+
+(define (i-cons head tail)
+  ; malloc 3 fields and store pointer
+  (let((pointer (malloc 3)))
+    (ref! pointer 0 'pair)
+    (ref! pointer 1 head)
+    (ref! pointer 2 tail)
+    pointer
+    )
+  )
+
+; access car of pair object at given adress
+; not a pair object will cause an error
+; ----------------------------------------
+(define (i-car pointer)
+  ; check if it is a number
+  (if (eqv? (tag pointer) 'pair)
+      ; its a pair! -> return the car
+      (ref pointer 1)
+      ; its not a pair :( -> error
+      (error "The specified pointer does not contain a pair!")
+      )
+  )
+
+; access cdr of pair object at given adress
+; not a pair object will cause an error
+; ----------------------------------------
+(define (i-cdr pointer)
+  ; check if it is a number
+  (if (eqv? (tag pointer) 'pair)
+      ; its a pair! -> return the cdr
+      (ref pointer 2)
+      ; its not a pair :( -> error
+      (error "The specified pointer does not contain a pair!")
+      )
+  )
+
+; prints error message and stops the program
+; ----------------------------------------
+(define (error message)
+  (display message)
+  (newline)
+  (exit)
   )
 
 ; function to define a static record
@@ -156,22 +236,15 @@
 
 ; test area
 ; ----------------------------------------
-(define testNumber (new-number 25))
+
+(printMemory)
+
+(define testNumber (i-number 13))
+
+(define testPair (i-cons testNumber i-null))
+
 (number->value testNumber)
-(number->value i-true)
-(number->value i-false)
-(number->value i-null)
-(number->value i-undefined)
 
-(define testSymbol (new-symbol 'blub))
-(symbol->value testSymbol)
-(symbol->value i-true)
-(symbol->value i-false)
-(symbol->value i-null)
-(symbol->value i-undefined)
+(number->value (i-car i-null))
 
-;(define adressOne (malloc 5))
-;(define adressTwo (malloc 3))
-
-
-;memory
+(printMemory)
