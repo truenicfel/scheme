@@ -231,6 +231,9 @@
 (define i-null (staticRecord 'null))
 ; undefined record
 (define i-undefined (staticRecord 'undefined))
+; epsilon record
+(define i-epsilon (staticRecord 'epsilon))
+
 
 ; INPUT AND OUTPUT
 ; --------------------------------------------------------------------------------
@@ -335,11 +338,142 @@
   )
 
 
+; BINDINGS
+; --------------------------------------------------------------------------------
+
+; Create a new binding in memory.
+; Params are pointers to objects in memory.
+; ----------------------------------------
+(define (i-binding symbol value compose)
+  ; malloc 4 fields 
+  (let((pointer (malloc 4)))
+    ; store the binding tag
+    (ref! pointer 0 'bind)
+    ; store pointer to symbol (variable name)
+    (ref! pointer 1 symbol)
+    ; store pointer to value (variable value)
+    (ref! pointer 2 value)
+    ; next binding
+    (ref! pointer 3 compose)
+    pointer
+    )
+  )
+
+; Get value from binding. Recursively searches
+; for the variable given by symbol param. Starts
+; at give binding (pointer).
+; ----------------------------------------
+(define (binding->value symbol binding)
+  (cond
+    ; is a binding?
+    ((eqv? (tag binding) 'bind)
+     (if
+      (eqv?
+       (symbol->value symbol)
+       (symbol->value (ref binding 1)))
+      ; we found the value! load and return it
+      (ref binding 2)
+      ; we did not find the value! keep on searching...
+      (binding->value symbol (ref binding 3))
+      )
+     )
+    ; is epsilon?
+    ((eqv? (tag binding) 'epsilon)
+     ; return false -> value not found
+     #f
+     )
+    (else
+     ; error case
+     (error "The given pointer does not point to a binding!")
+     )
+    )
+  )
+
+; Create new environment with given binding
+; ----------------------------------------
+(define (i-environment binding)
+  ; malloc 2 fields 
+  (let((pointer (malloc 2)))
+    ; store the environment tag
+    (ref! pointer 0 'environment)
+    ; store pointer to binding
+    (ref! pointer 1 binding)
+    pointer
+    )
+  )
+
+; Global environment
+; ----------------------------------------
+(define global-environment
+  ; create empty environment
+  (i-environment i-epsilon)
+  )
+
+; Get binding from environment
+; ----------------------------------------
+(define (environment->binding environment)
+  ; check if environment is an environment
+  (if (eqv? (tag environment) 'environment)
+      (ref environment 1)
+      (error "This is not an environment!")
+      )
+  )
+
+; Set binding in environment
+; ----------------------------------------
+(define (environment-set! environment binding)
+  ; check if environment is an environment
+  (if (eqv? (tag environment) 'environment)
+      (ref! environment 1 binding)
+      (error "This is not an environment!")
+      )
+  )
+
+; Add binding in environment
+; ----------------------------------------
+(define (add-variable variable value environment)
+  ; check if environment is an environment
+  (if (eqv? (tag environment) 'environment)
+      ; create new binding from variable + value + old-binding
+      ; and add it as new binding
+      (environment-set!
+       environment
+       (i-binding variable value (environment->binding environment))
+       )
+      (error "This is not an environment!")
+      )
+  )
+
+; Search for the value of the variable
+; ----------------------------------------
+(define (variable->value variable environment)
+  ; check if environment is an environment
+  (if (eqv? (tag environment) 'environment)
+      ; get value of variable in the environment
+      (binding->value variable (environment->binding environment))
+      (error "This is not an environment!")
+      )
+  )
+
 ; test area
 ; ----------------------------------------
 
 (printMemory)
 
-(i-display (i-read))
+; first binding x -> 10
+;(define firstBinding (i-binding (i-symbol 'x) (i-number 10) i-epsilon))
+; second binding y -> 20
+;(define secondBinding (i-binding (i-symbol 'y) (i-number 20) firstBinding))
 
+; third binding z -> 30
+(define thirdBinding (i-binding (i-symbol 'z) (i-number 30) i-epsilon))
+; fourth binding a -> 40
+(define fourthBinding (i-binding (i-symbol 'a) (i-number 40) thirdBinding))
+
+(define testSymbol (i-symbol 'x))
+(define testNumber (i-number 1))
+
+(environment-set! global-environment fourthBinding)
+(add-variable testSymbol testNumber global-environment)
+(variable->value (i-symbol '123) global-environment)
 (printMemory)
