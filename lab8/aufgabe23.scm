@@ -1,5 +1,6 @@
 ;
 ; TODO:
+; - i-define lacks error checking (exactly 2 arguments expected!)
 ; 
 
 ; MEMORY MANAGEMENT
@@ -122,9 +123,9 @@
 ; not a symbol object will cause an error
 ; ----------------------------------------
 (define (symbol->value pointer)
-  ; check if it is a number
+  ; check if it is a symbol
   (if (eqv? (tag pointer) 'symbol)
-      ; its a number! -> return the first value behind tag
+      ; its a symbol! -> return the first value behind tag
       (ref pointer 1)
       ; its not a symbol :( -> error
       (error "The specified pointer does not contain a symbol!")
@@ -455,25 +456,197 @@
       )
   )
 
+; PRIMITIVE FUNCTIONS
+; --------------------------------------------------------------------------------
+
+; Create new function in memory.
+; function: function to store.
+; ----------------------------------------
+(define (i-primitive function)
+  ; malloc 2 fields and store pointer
+  (let((pointer (malloc 2)))
+    ; store the primitive tag
+    (ref! pointer 0 'primitive)
+    ; store pointer to function
+    (ref! pointer 1 function)
+    pointer
+    )
+  )
+
+; Get executable code from given location.
+; pointer: gives the location of the function
+; Stops in case pointer doesn't point to a function.
+; ----------------------------------------
+(define (primitive->function pointer)
+  ; check if it is a primitive
+  (if (eqv? (tag pointer) 'primitive)
+      ; its a primitive! -> return the function value behind tag
+      (ref pointer 1)
+      ; its not a primitive :( -> error
+      (error "The specified pointer does not contain a primitive!")
+      )
+  )
+
+; Useful function to map a primitive function to
+; a name in the global environment. Creates the function
+; using i-primitive.
+; name: name of the variable in the global environment
+; function: function that gets mapped to the name
+; ----------------------------------------
+(define (add-primitive name function)
+  ; create new primitive which stores function
+  (let
+      ((functionLocation (i-primitive function)))
+    ; add variable to global environment 
+    (add-variable (i-symbol name) functionLocation global-environment)
+    )
+  )
+
+; Primitive function: i-plus
+; environment: Here the function will look up variable values
+; values: list of parameters (these will get added up)
+; ----------------------------------------
+(define (i-plus environment values)
+  (i-number
+   (let loop ((sum 0)
+              (value values))
+     (if (eqv? (tag value) 'pair)
+         (loop (+ sum (number->value (i-eval environment (i-car value))))
+               (i-cdr value))
+         sum)))
+  )
+; add the function to global environment
+(add-primitive '+ i-plus)
+
+; Primitive function: i-minus
+; environment: Here the function will look up variable values
+; values: list of parameters (these will get added up)
+; ----------------------------------------
+(define (i-minus environment values)
+  ; check if values is a list
+  (if
+   (eqv? (tag values) 'pair)
+   (i-number
+    ; evaluate first argument and store it to startValue
+    (let loop ((startValue (number->value (i-eval environment (i-car values))))
+                           (value (i-cdr values)))
+               (if (eqv? (tag value) 'pair)
+                   (loop (- startValue (number->value (i-eval environment (i-car value))))
+                         (i-cdr value))
+                   startValue))) 
+    )
+   )
+; add the function to global environment
+(add-primitive '- i-minus)
+
+; Primitive function: i-define
+; environment: Here the function will look up variable values
+; values: list of parameters (these will get added up)
+; ----------------------------------------
+(define (i-define environment values)
+  (if (eqv? (tag values) 'pair)
+      (let ((parameterOne (i-car values))
+            (parameterTwo (i-car (i-cdr values))))
+        (add-variable
+         ; pointer to symbol object
+         parameterOne
+         ; evaluate parameter two
+         (i-eval environment parameterTwo)
+         ; provide environment for evaluation of param two
+         environment
+         )
+        i-undefined
+        )
+      (error "Not a pair!")
+      )
+  )
+
+; add the function to global environment
+(add-primitive 'define i-define) 
+
+; EVAL AND APPLY
+; --------------------------------------------------------------------------------
+
+; evaluate an expression in a given environment
+; environment: obvious
+; expression: obvious
+; ----------------------------------------
+(define (i-eval environment expression)
+  (cond
+    ; expression is a number!
+    ((eqv? (tag expression) 'number)
+     ; simply return the pointer to the number object
+     expression
+     )
+    ; expression is a pair!
+    ((eqv? (tag expression) 'symbol)
+     ; perform lookup in environment
+     ; store result in value
+     (let ((value
+            (variable->value expression environment)))
+       ; check if result is valid
+       (if value
+           ; return value
+           value
+           ; #f was returned
+           (error "The variable does not exist!")
+           )
+       )
+     )
+    ; expression is a pair!
+    ((eqv? (tag expression) 'pair)
+     ; first element in list
+     (i-apply
+      ; the environment
+      environment
+      ; the function
+      (i-eval environment (i-car expression))
+      ; argument list
+      (i-cdr expression)
+      )
+     )
+    (else
+     (error "i-eval can't handle the given type")
+     )
+    )
+  )
+
+; Evaluate a given function. Calls the appropriate
+; primitive function.
+; environment: environment in which the function will be executed
+; function: pointer to function object in our local memory
+; argumentList: arguments to the function called
+; ----------------------------------------
+(define (i-apply environment function argumentList)
+  ; we expect a function here!
+  (if (eqv? (tag function) 'primitive)
+      ; it's a function
+      ((primitive->function function) environment argumentList)
+      ; it's not a function
+      (error "Expected a procedure...") 
+      )
+  )
+
+
 ; test area
 ; ----------------------------------------
 
-(printMemory)
+(define (read-eval-print return)
+  (define (i-exit env values) (return 0))
+  (add-primitive 'exit i-exit)
+  (let loop ()
+    (newline)
+    (display "i-scheme> ")
+    ;(printMemory)
+    (i-display (i-eval global-environment (i-read)))
+    (loop))
+  )
 
-; first binding x -> 10
-;(define firstBinding (i-binding (i-symbol 'x) (i-number 10) i-epsilon))
-; second binding y -> 20
-;(define secondBinding (i-binding (i-symbol 'y) (i-number 20) firstBinding))
+(define (i-scheme)
+  (display "This is i-scheme version 1.0")
+  (call-with-current-continuation read-eval-print)
+  (display "Bye!")
+  (newline)
+)
 
-; third binding z -> 30
-(define thirdBinding (i-binding (i-symbol 'z) (i-number 30) i-epsilon))
-; fourth binding a -> 40
-(define fourthBinding (i-binding (i-symbol 'a) (i-number 40) thirdBinding))
-
-(define testSymbol (i-symbol 'x))
-(define testNumber (i-number 1))
-
-(environment-set! global-environment fourthBinding)
-(add-variable testSymbol testNumber global-environment)
-(variable->value (i-symbol '123) global-environment)
-(printMemory)
+(i-scheme)
